@@ -1,0 +1,72 @@
+pipeline {
+    agent any
+    
+    tools {
+        jdk 'jdk11' // Update this to the name of the JDK 17 installation
+        maven 'maven3'
+    }
+    
+    environment {
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+
+    stages {
+        stage('Git Checkout') {
+            steps {
+                git changelog: false, poll: false, url: 'https://github.com/aditya-7020/secretsanta-generator.git'
+            }
+        }
+        
+        stage('Compile Code') {
+            steps {
+                sh "mvn clean compile"
+            }
+        }
+        
+        stage('Sonarqube-Analysis') {
+            steps {
+                sh '''$SCANNER_HOME/bin/sonar-scanner \
+                       -Dsonar.url=http://43.204.233.13:9000/ \
+                       -Dsonar.login=squ_30ba8ef31b4b785358080838768c576029e47a15 \
+                       -Dsonar.projectName=kamjritztex_project \
+                       -Dsonar.java.binaries=. \
+                       -Dsonar.projectKey=kamjritztex_project'''
+            }
+        }
+        
+        stage('OWASP Scanner') {
+            steps {
+                dependencyCheck additionalArguments: '--scan ./', odcInstallation: 'DP'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        
+        stage('Build Artifact') {
+            steps {
+                sh "mvn clean install"
+            }
+        }
+        
+        stage('Docker Build & Push image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'be9de59e-5ff8-42e7-9798-2dc9a3357596', toolName: 'docker') {
+                        sh "docker build -t kamjritztex ."
+                        sh "docker tag kamjritztex aditya702077490/kamjritztex:latest"
+                        sh "docker push aditya702077490/kamjritztex:latest"
+                    }
+                }
+            }
+        }
+        
+        stage('Docker Deployment') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'be9de59e-5ff8-42e7-9798-2dc9a3357596', toolName: 'docker') {
+                        sh "docker run -d --name kamjritztex11 -p 8080:8080 aditya702077490/kamjritztex:latest"
+                    }
+                }
+            }
+        }
+    }
+}
